@@ -6,6 +6,7 @@ import { Util } from '../utils/Util';
 import { Track, TrackResolvable } from './Track';
 import { GuildQueue } from './GuildQueue';
 import { setTimeout as waitFor } from 'timers/promises';
+import { AsyncQueue } from '../utils/AsyncQueue';
 
 export const FFMPEG_SRATE_REGEX = /asetrate=\d+\*(\d(\.\d)?)/;
 
@@ -29,6 +30,7 @@ export interface PlayerTimestamp {
 
 export class GuildQueuePlayerNode<Meta = unknown> {
     #progress = 0;
+    public tasksQueue = new AsyncQueue();
     public constructor(public queue: GuildQueue<Meta>) {}
 
     /**
@@ -416,40 +418,53 @@ export class GuildQueuePlayerNode<Meta = unknown> {
             throw new Error('Play request received but track was not provided');
         }
 
-        if (this.queue.initializing) {
-            this.queue.debug('Queue is currently initializing another track, waiting...');
-            await this.queue.awaitInitialization();
-            this.queue.debug('Queue has finished initialization...');
-        }
-
         this.queue.debug('Requested option requires to play the track, initializing...');
-        this.queue.initializing = true;
 
         try {
             this.queue.debug(`Initiating stream extraction process...`);
             const src = track.raw?.source || track.source;
             const qt: SearchQueryType = track.queryType || (src === 'spotify' ? 'spotifySong' : src === 'apple_music' ? 'appleMusicSong' : src);
             this.queue.debug(`Executing onBeforeCreateStream hook (QueryType: ${qt})...`);
-            let stream = await this.queue.onBeforeCreateStream?.(track, qt || 'arbitrary', this.queue).catch(() => null);
 
-            if (!stream) {
+            const streamSrc = {
+                error: null as Error | null,
+                stream: null as Readable | null
+            };
+
+            await this.queue.onBeforeCreateStream?.(track, qt || 'arbitrary', this.queue).then(
+                (s) => {
+                    if (s) {
+                        streamSrc.stream = s;
+                    }
+                },
+                (e: Error) => (streamSrc.error = e)
+            );
+
+            // throw if 'onBeforeCreateStream' panics
+            if (!streamSrc.stream && streamSrc.error) return this.#throw(track, streamSrc.error);
+
+            // default behavior when 'onBeforeCreateStream' did not panic
+            if (!streamSrc.stream) {
                 this.queue.debug('Failed to get stream from onBeforeCreateStream!');
-                stream = (await this.#createGenericStream(track).catch(() => null)) as Readable;
+                await this.#createGenericStream(track).then(
+                    (r) => {
+                        if (r?.result) {
+                            streamSrc.stream = <Readable>r.result;
+                            return;
+                        }
+
+                        if (r?.error) {
+                            streamSrc.error = r.error;
+                            return;
+                        }
+
+                        streamSrc.stream = streamSrc.error = null;
+                    },
+                    (e: Error) => (streamSrc.error = e)
+                );
             }
 
-            if (!stream) {
-                const error = new Error('Could not extract stream for this track');
-                if (this.queue.options.skipOnNoStream) {
-                    this.queue.player.events.emit('playerSkip', this.queue, track);
-                    this.queue.player.events.emit('playerError', this.queue, error, track);
-                    this.queue.initializing = false;
-                    const nextTrack = this.queue.tracks.dispatch();
-                    if (nextTrack) this.play(nextTrack, { queue: false });
-                    return;
-                }
-
-                throw error;
-            }
+            if (!streamSrc.stream) return this.#throw(track, streamSrc.error);
 
             if (typeof options.seek === 'number' && options.seek >= 0) {
                 this.#progress = options.seek;
@@ -459,7 +474,7 @@ export class GuildQueuePlayerNode<Meta = unknown> {
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const cookies = track.raw?.source === 'youtube' ? (<any>this.queue.player.options.ytdlOptions?.requestOptions)?.headers?.cookie : undefined;
-            const pcmStream = this.#createFFmpegStream(stream, track, options.seek ?? 0, cookies);
+            const pcmStream = this.#createFFmpegStream(streamSrc.stream, track, options.seek ?? 0, cookies);
 
             if (options.transitionMode) {
                 this.queue.debug(`Transition mode detected, player will wait for buffering timeout to expire (Timeout: ${this.queue.options.bufferingTimeout}ms)`);
@@ -507,12 +522,27 @@ export class GuildQueuePlayerNode<Meta = unknown> {
             this.queue.setTransitioning(!!options.transitionMode);
 
             await this.#performPlay(resource);
-            this.queue.initializing = false;
         } catch (e) {
             this.queue.debug(`Failed to initialize audio player: ${e}`);
-            this.queue.initializing = false;
             throw e;
         }
+    }
+
+    #throw(track: Track, error?: Error | null) {
+        // prettier-ignore
+        const streamDefinitelyFailedMyDearT_TPleaseTrustMeItsNotMyFault = (
+            new Error(`Could not extract stream for this track${error ? `\n\n${error.stack || error}` : ''}`)
+        );
+
+        if (this.queue.options.skipOnNoStream) {
+            this.queue.player.events.emit('playerSkip', this.queue, track);
+            this.queue.player.events.emit('playerError', this.queue, streamDefinitelyFailedMyDearT_TPleaseTrustMeItsNotMyFault, track);
+            const nextTrack = this.queue.tracks.dispatch();
+            if (nextTrack) this.play(nextTrack, { queue: false });
+            return;
+        }
+
+        throw streamDefinitelyFailedMyDearT_TPleaseTrustMeItsNotMyFault;
     }
 
     async #performPlay(resource: AudioResource<Track>) {
@@ -536,8 +566,7 @@ export class GuildQueuePlayerNode<Meta = unknown> {
 
         this.queue.debug(`Stream extraction was successful for Track { title: ${track.title}, url: ${track.url} } (Extractor: ${streamInfo.extractor.identifier})`);
 
-        const stream = streamInfo.result;
-        return stream;
+        return streamInfo;
     }
 
     #createFFmpegStream(stream: Readable | string, track: Track, seek = 0, cookies?: string) {
