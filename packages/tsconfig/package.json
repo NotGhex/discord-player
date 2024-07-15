@@ -1,12 +1,11 @@
 {
   "name": "@discord-player/tsconfig",
-  "version": "0.0.0",
-  "description": "TSConfig",
-  "author": "skdhg",
+  "version": "0.0.1",
+  "description": "TSConfig for discord-player monorepo",
+  "author": "twlite",
   "homepage": "https://discord-player.js.org",
   "license": "MIT",
   "main": "index.js",
-  "private": true,
   "files": [
     "index.js",
     "base.json"
@@ -17,5 +16,9 @@
   },
   "bugs": {
     "url": "https://github.com/Androz2091/discord-player/issues"
+  },
+  "devDependencies": {
+    "tsup": "^8.1.0",
+    "typescript": "^5.5.2"
   }
 }

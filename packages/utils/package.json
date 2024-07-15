@@ -1,11 +1,11 @@
 {
   "name": "@discord-player/utils",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Discord Player Utilities",
   "keywords": [
     "discord-player"
   ],
-  "author": "skdhg",
+  "author": "twlite",
   "homepage": "https://discord-player.js.org",
   "license": "MIT",
   "main": "dist/index.js",
@@ -34,7 +34,10 @@
     "@discordjs/collection": "^1.1.0"
   },
   "devDependencies": {
-    "@discord-player/tsconfig": "*"
+    "@discord-player/tsconfig": "workspace:^",
+    "tsup": "^8.1.0",
+    "typescript": "^5.5.2",
+    "vitest": "^0.34.6"
   },
   "typedoc": {
     "entryPoint": "./src/index.ts",

@@ -15,8 +15,12 @@ export class VolumeTransformer extends PCMTransformer {
         }
     }
 
-    public get volume() {
+    public get volumeApprox() {
         return this._volume * 100;
+    }
+
+    public get volume() {
+        return Math.floor(this.volumeApprox);
     }
 
     public set volume(volume: number) {
@@ -24,7 +28,8 @@ export class VolumeTransformer extends PCMTransformer {
     }
 
     public setVolume(volume: number) {
-        if (typeof volume !== 'number' || isNaN(volume)) return false;
+        if (typeof volume !== 'number' || isNaN(volume))
+            throw new Error(`Expected volume amount to be a number, received ${typeof volume}!`);
         if (volume < 0) volume = 0;
         if (!isFinite(volume)) volume = 100;
 

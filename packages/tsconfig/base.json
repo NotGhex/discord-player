@@ -6,16 +6,18 @@
         "moduleResolution": "node",
         "module": "commonjs",
         "declaration": true,
-        "outDir": "./dist",
+        "noEmit": true,
         "strict": true,
         "strictNullChecks": true,
         "esModuleInterop": true,
         "pretty": true,
         "skipLibCheck": true,
         "skipDefaultLibCheck": true,
+        "isolatedModules": true,
         "forceConsistentCasingInFileNames": true
     },
     "exclude": [
-        "node_modules"
+        "node_modules",
+        "dist"
     ]
 }

@@ -13,7 +13,7 @@ export class Queue<T = unknown> {
         Object.defineProperty(this, 'store', {
             writable: true,
             configurable: true,
-            enumerable: false
+            enumerable: false,
         });
     }
 
@@ -66,8 +66,8 @@ export class Queue<T = unknown> {
     }
 
     public removeOne(itemFilter: QueueItemFilter<T>) {
-        const item = this.store.find(itemFilter);
-        if (item) this.store = this.store.filter((res) => res !== item);
+        const item = this.store.findIndex(itemFilter);
+        if (item > -1) this.store.splice(item, 1);
     }
 
     public find(itemFilter: QueueItemFilter<T>) {
@@ -125,7 +125,7 @@ export class Queue<T = unknown> {
             showHidden: false,
             colors: true,
             depth: 1,
-            maxArrayLength: 5
+            maxArrayLength: 5,
         })}\n}`;
     }
 }
